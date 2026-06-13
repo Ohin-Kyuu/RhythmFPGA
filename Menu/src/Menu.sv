@@ -4,12 +4,12 @@ module Menu (
     input logic [2:0] sw,
     input logic [3:0] btn,
 
-    // VGA
     output logic [3:0] vga_r,
     output logic [3:0] vga_g,
     output logic [3:0] vga_b,
     output logic       hsync,
-    output logic       vsync
+    output logic       vsync,
+    output logic [3:0] leds
 );
 
   logic clk_25M;
@@ -18,15 +18,28 @@ module Menu (
   ) Ufd (
       .clk(clk),
       .rst_n(rst_n),
+      // output
       .clk_25(clk_25M),
       .clk_25d4(),
       .clk_25d128(),
       .cnt()
   );
 
+  logic frame_tick;
+  vga_tick U_vga_tick (
+      .clk       (clk_25M),
+      .rst_n     (rst_n),
+      .vga_valid (video_valid),
+      .vga_x     (vga_x),
+      .vga_y     (vga_y),
+      // output 
+      .frame_tick(frame_tick)
+  );
+
   logic [9:0] vga_x;
   logic [9:0] vga_y;
   logic       video_valid;
+
   vga U_vga_ctrl (
       .pclk (clk_25M),
       .reset(~rst_n),
@@ -58,27 +71,26 @@ module Menu (
   pulAll #(
       .NUM(4)
   ) U_pg (
-      .clk  (clk),
+      .clk  (clk_100),
       .rst_n(rst_n),
       .in   (db_btn),
       .p_out(p_btn)
   );
 
-  logic p_start;
-  logic p_vol;
+  logic db_start;
+  logic db_vol;
+  assign db_start = db_btn[0];
+  assign db_vol   = db_btn[2];
+
   logic p_up;
   logic p_down;
-  assign {p_start, p_up, p_vol, p_down} = p_btn;
+  assign p_up   = p_btn[1];
+  assign p_down = p_btn[3];
 
-  // ==========================================
-  // 4. 實例化 動態選單介面 (Menu_UI.sv)
-  // ==========================================
-  logic       ui_pixel;  // 介面輸出 (1:有圖案, 0:黑底)
-  logic [3:0] current_vol;  // 目前音量 (準備未來餵給 Music.sv)
-  logic       vol_is_open;  // 由 menuUI 輸出，告訴我們音量條是否已展開
+  logic       ui_pixel;
+  logic [3:0] current_vol;
+  logic       vol_is_open;
 
-  // 實體化 volctrl (使用 clk_100Hz)
-  // 條件：只有在 vol_is_open 為 1 (展開) 時，按鍵訊號才會送進 volctrl
   volctrl U_vc (
       .clk   (clk_100),
       .rst_n (rst_n),
@@ -87,16 +99,19 @@ module Menu (
       .volume(current_vol)
   );
 
+  assign leds = current_vol;
+
   menuUI U_Menu_UI (
-      .clk        (clk),
+      .clk        (clk_25M),
       .rst_n      (rst_n),
       .vga_x      (vga_x),
       .vga_y      (vga_y),
-      .btn_start  (p_start),
-      .btn_vol    (p_vol),
+      .frame_tick (frame_tick),
+      .btn_start  (db_start),
+      .btn_vol    (db_vol),
       .sw         (sw),
       .current_vol(current_vol),
-      .vol_is_open(vol_is_open),  // 輸出狀態給外面的 volctrl 用
+      .vol_is_open(vol_is_open),
       .ui_pixel   (ui_pixel)
   );
 
