@@ -69,7 +69,7 @@ module play_track_logic #(
   // Beat 邊緣偵測
   logic beat_m, beat_s, beat_s2, beat_p;
   always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
+    if (!rst_n || play_rst || !play_en) begin
       beat_m  <= 0;
       beat_s  <= 0;
       beat_s2 <= 0;

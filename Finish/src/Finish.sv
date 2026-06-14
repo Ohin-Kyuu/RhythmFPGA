@@ -14,9 +14,6 @@ module Finish (
     output logic ui_pixel
 );
 
-  // ---------------------------------------------------------------------------
-  // Layout requested by user
-  // ---------------------------------------------------------------------------
   localparam int SCORE_TEXT_X = 306;
   localparam int SCORE_TEXT_Y = 177;
 
@@ -30,8 +27,8 @@ module Finish (
 
   localparam logic [9:0] BACK_BASE_X = 10'd251;
   localparam logic [9:0] BACK_BASE_Y = 10'd280;
-  localparam logic [9:0] BACK_TOP_X  = 10'd252;
-  localparam logic [9:0] BACK_TOP_Y  = 10'd277;
+  localparam logic [9:0] BACK_TOP_X = 10'd252;
+  localparam logic [9:0] BACK_TOP_Y = 10'd277;
   localparam logic [9:0] BACK_TEXT_X = 10'd284;
   localparam logic [9:0] BACK_TEXT_Y = 10'd282;
 
@@ -45,14 +42,11 @@ module Finish (
   localparam logic [2:0] NUM_H = 3'd7;
   localparam logic [2:0] NUM_PIX_W = 3'd5;
 
-  localparam logic [8*5-1:0]  STR_SCORE = "SCORE";
-  localparam logic [8*12-1:0] STR_BACK  = "Back to MENU";
+  localparam logic [8*5-1:0] STR_SCORE = "SCORE";
+  localparam logic [8*12-1:0] STR_BACK = "Back to MENU";
 
   assign back_to_menu = p_back;
 
-  // ---------------------------------------------------------------------------
-  // Shared bitmaps / fonts
-  // ---------------------------------------------------------------------------
   logic [154:0] rom_char_lower[0:7];
   logic [154:0] rom_char_upper[0:6];
   logic [ 58:0] rom_number    [0:6];
@@ -73,7 +67,7 @@ module Finish (
   function automatic logic on_rect_border(input logic [9:0] x, input logic [9:0] y, input int left,
                                           input int top, input int width, input int height);
     return in_rect(x, y, left, top, width, height) &&
-           ((x == left) || (x == left + width - 1) || (y == top) || (y == top + height - 1));
+        ((x == left) || (x == left + width - 1) || (y == top) || (y == top + height - 1));
   endfunction
 
   function automatic logic font_pixel_at(input logic [7:0] ch, input logic [2:0] pixel_x,
@@ -106,9 +100,6 @@ module Finish (
     end
   endfunction
 
-  // ---------------------------------------------------------------------------
-  // Button bitmap reused from Menu START button
-  // ---------------------------------------------------------------------------
   logic back_btn_active;
   logic back_btn_pixel;
 
@@ -130,11 +121,8 @@ module Finish (
   logic [9:0] arrow_y_now;
 
   assign back_text_y_now = BACK_TEXT_Y + (db_back ? 10'd2 : 10'd0);
-  assign arrow_y_now     = ARROW_Y     + (db_back ? 10'd2 : 10'd0);
+  assign arrow_y_now     = ARROW_Y + (db_back ? 10'd2 : 10'd0);
 
-  // ---------------------------------------------------------------------------
-  // Score BCD, saturated to 9999
-  // ---------------------------------------------------------------------------
   logic [13:0] score_sat;
   logic [3:0] score_d3, score_d2, score_d1, score_d0;
   logic [13:0] rem0, rem1, rem2;
@@ -142,7 +130,7 @@ module Finish (
   always_comb begin
     score_sat = (score > 16'd9999) ? 14'd9999 : score[13:0];
 
-    if      (score_sat >= 14'd9000) score_d3 = 4'd9;
+    if (score_sat >= 14'd9000) score_d3 = 4'd9;
     else if (score_sat >= 14'd8000) score_d3 = 4'd8;
     else if (score_sat >= 14'd7000) score_d3 = 4'd7;
     else if (score_sat >= 14'd6000) score_d3 = 4'd6;
@@ -151,11 +139,11 @@ module Finish (
     else if (score_sat >= 14'd3000) score_d3 = 4'd3;
     else if (score_sat >= 14'd2000) score_d3 = 4'd2;
     else if (score_sat >= 14'd1000) score_d3 = 4'd1;
-    else                            score_d3 = 4'd0;
+    else score_d3 = 4'd0;
 
     rem0 = score_sat - ({10'd0, score_d3} * 14'd1000);
 
-    if      (rem0 >= 14'd900) score_d2 = 4'd9;
+    if (rem0 >= 14'd900) score_d2 = 4'd9;
     else if (rem0 >= 14'd800) score_d2 = 4'd8;
     else if (rem0 >= 14'd700) score_d2 = 4'd7;
     else if (rem0 >= 14'd600) score_d2 = 4'd6;
@@ -164,11 +152,11 @@ module Finish (
     else if (rem0 >= 14'd300) score_d2 = 4'd3;
     else if (rem0 >= 14'd200) score_d2 = 4'd2;
     else if (rem0 >= 14'd100) score_d2 = 4'd1;
-    else                      score_d2 = 4'd0;
+    else score_d2 = 4'd0;
 
     rem1 = rem0 - ({10'd0, score_d2} * 14'd100);
 
-    if      (rem1 >= 14'd90) score_d1 = 4'd9;
+    if (rem1 >= 14'd90) score_d1 = 4'd9;
     else if (rem1 >= 14'd80) score_d1 = 4'd8;
     else if (rem1 >= 14'd70) score_d1 = 4'd7;
     else if (rem1 >= 14'd60) score_d1 = 4'd6;
@@ -177,15 +165,12 @@ module Finish (
     else if (rem1 >= 14'd30) score_d1 = 4'd3;
     else if (rem1 >= 14'd20) score_d1 = 4'd2;
     else if (rem1 >= 14'd10) score_d1 = 4'd1;
-    else                     score_d1 = 4'd0;
+    else score_d1 = 4'd0;
 
     rem2 = rem1 - ({10'd0, score_d1} * 14'd10);
     score_d0 = rem2[3:0];
   end
 
-  // ---------------------------------------------------------------------------
-  // Text / bitmap render
-  // ---------------------------------------------------------------------------
   logic score_text_on;
   logic score_num_on;
   logic back_text_on;
@@ -215,8 +200,8 @@ module Finish (
 
     // drawString("SCORE", 306, 177)
     if (in_rect(vga_x, vga_y, SCORE_TEXT_X, SCORE_TEXT_Y, 5 * CHAR_W, UPPER_CHAR_H)) begin
-      char_index   = (vga_x - SCORE_TEXT_X) / CHAR_W;
-      target_char  = STR_SCORE[(4-char_index)*8+:8];
+      char_index = (vga_x - SCORE_TEXT_X) / CHAR_W;
+      target_char = STR_SCORE[(4-char_index)*8+:8];
       char_pixel_x = (vga_x - SCORE_TEXT_X) % CHAR_W;
       char_pixel_y = vga_y - SCORE_TEXT_Y;
       score_text_on = font_pixel_at(target_char, char_pixel_x, char_pixel_y);
@@ -249,7 +234,7 @@ module Finish (
 
     // arrow.mem, width=8, height=5, placed at (316, 291)
     if (in_rect(vga_x, vga_y, ARROW_X, arrow_y_now, 8, 5)) begin
-      arrow_on = rom_arrow[vga_y - arrow_y_now][7-(vga_x - ARROW_X)];
+      arrow_on = rom_arrow[vga_y-arrow_y_now][7-(vga_x-ARROW_X)];
     end
   end
 

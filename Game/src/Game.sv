@@ -105,7 +105,6 @@ module Game (
   logic play_song_finish;
   logic song_finish;
 
-  // 目前先以 Music 結束作為真正遊戲結束條件；Play 的 finish 可當 debug。
   assign song_finish = music_song_finish;
 
   localparam logic [2:0] S_SELECT = 3'd0;
@@ -129,11 +128,22 @@ module Game (
   logic play_en;
   logic play_rst;
 
-  assign music_play_en = in_playing;
-  assign play_en       = in_playing;
+  logic [2:0] state_d;
 
-  assign music_reset   = in_select;
-  assign play_rst      = in_select;
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) state_d <= S_SELECT;
+    else state_d <= state_out;
+  end
+
+  logic new_game_start;
+  assign new_game_start = (state_d == S_SELECT) && (state_out == S_COUNTDOWN);
+
+
+  assign music_play_en  = in_playing;
+  assign play_en        = in_playing;
+
+  assign music_reset    = in_select || new_game_start;
+  assign play_rst       = in_select || new_game_start;
 
   game_fsm U_g_fsm (
       .clk          (clk),
