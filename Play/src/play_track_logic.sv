@@ -35,8 +35,12 @@ module play_track_logic #(
   localparam int WIN_LO = PERFECT_TOP - 16;
   localparam int WIN_HI = PERFECT_BOT + 16;
 
-  // ROM 讀取邏輯
+  localparam logic [9:0] ROW_PX_10 = ROW_PX;
+  localparam logic [8:0] ROW_PX_9 = ROW_PX;
+  localparam logic [7:0] ROW_PX_8 = ROW_PX;
+
   localparam int NMAX = 2200;
+  localparam logic [16:0] SCORE_MAX = 17'd9999;
   logic [3:0] rom_mario[0:NMAX-1], rom_zelda[0:NMAX-1], rom_pokemon[0:NMAX-1];
   initial begin
     $readmemh("mario_key_track.mem", rom_mario);
@@ -66,20 +70,12 @@ module play_track_logic #(
     end
   endfunction
 
-  // Beat 邊緣偵測
-  logic beat_m, beat_s, beat_s2, beat_p;
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n || play_rst || !play_en) begin
-      beat_m  <= 0;
-      beat_s  <= 0;
-      beat_s2 <= 0;
-    end else begin
-      beat_m  <= beat;
-      beat_s  <= beat_m;
-      beat_s2 <= beat_s;
-    end
-  end
-  assign beat_p = beat_s & ~beat_s2;
+  // Beat tick
+  // beatGen already outputs a one-clock pulse synchronous to clk, and Music/linegen
+  // advances directly with `music_playing && beat`.  Use the exact same pulse here
+  // so Play and Music cannot drift because of an extra local edge-detector delay.
+  logic beat_p;
+  assign beat_p = play_en && beat;
 
   // 狀態寄存器
   logic [7:0] frame_cnt, fpb;
@@ -92,7 +88,7 @@ module play_track_logic #(
 
   logic [9:0] c0, c1;
   assign c0 = RECEPTOR_C[9:0] + {2'd0, sub_acc_px};
-  assign c1 = (RECEPTOR_C[9:0] + {2'd0, sub_acc_px}) - ROW_PX[9:0];
+  assign c1 = (RECEPTOR_C[9:0] + {2'd0, sub_acc_px}) - ROW_PX_10;
 
   function automatic logic [2:0] rate_of(input logic [9:0] c);
     int d;
@@ -144,7 +140,6 @@ module play_track_logic #(
     for (int l = 0; l < 4; l++) begin
       logic v0, v1;
       logic [2:0] rt0, rt1;
-      // 修正：last_row == 12'hFFF 代表該軌還沒擊中過任何音符
       v0  = mask0[l] && (beat_cnt < cur_len) && (last_row[l] == 12'hFFF || beat_cnt > last_row[l]) && in_win(
           c0);
       v1  = mask1[l] && (beat_cnt+12'd1 < cur_len) && (last_row[l] == 12'hFFF || beat_cnt+12'd1 > last_row[l]) && in_win(
@@ -200,7 +195,7 @@ module play_track_logic #(
         hold_active[i] <= 0;
       end
     end else if (play_en && !song_finish) begin
-      logic [16:0] next_score;  // 17-bit for score saturation to 9999
+      logic [16:0] next_score;  // 17-bit 暫存，最後飽和到 SCORE_MAX
       next_score = {1'b0, score};
 
       if (beat_p) beat_pending <= 1'b1;
@@ -247,7 +242,7 @@ module play_track_logic #(
           if (frame_cnt != 8'hFF) frame_cnt <= frame_cnt + 1;
 
           // 修正：用二進位權重減法取代危險的 deep for-loop
-          temp_a  = sub_acc + ROW_PX[8:0];
+          temp_a  = sub_acc + ROW_PX_9;
           temp_px = sub_acc_px;
           if (temp_a >= {1'b0, fpb} * 16) begin
             temp_a -= {1'b0, fpb} * 16;
@@ -270,7 +265,7 @@ module play_track_logic #(
             temp_px += 1;
           end
 
-          if (temp_px > ROW_PX[7:0] - 1) temp_px = ROW_PX[7:0] - 1;
+          if (temp_px > ROW_PX_8 - 1) temp_px = ROW_PX_8 - 1;
           sub_acc <= temp_a;
           sub_acc_px <= temp_px;
 
@@ -302,8 +297,8 @@ module play_track_logic #(
         end
       end
 
-      // Score saturates at 9999 for 4-digit Final UI
-      if (next_score > 17'd9999) score <= 16'd9999;
+      // 分數安全寫入（防溢位）
+      if (next_score > SCORE_MAX) score <= SCORE_MAX[15:0];
       else score <= next_score[15:0];
     end
   end

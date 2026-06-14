@@ -24,9 +24,7 @@ module Game (
     output logic [3:0] leds
 );
 
-  // ---------------------------------------------------------------------------
   // VGA timing
-  // ---------------------------------------------------------------------------
   logic [9:0] vga_x;
   logic [9:0] vga_y;
   logic       video_valid;
@@ -43,17 +41,25 @@ module Game (
       .frame_tick(frame_tick)
   );
 
-  // ---------------------------------------------------------------------------
   // Buttons
-  // btn[0] start / back, btn[1] volume up, btn[2] volume menu, btn[3] volume down
-  // ---------------------------------------------------------------------------
+  // btn[0] start / back 
+  // btn[1] volume up 
+  // btn[2] volume menu 
+  // btn[3] volume down
   logic [3:0] db_btn;
   logic [3:0] p_btn;
+  logic clk_100;
+
+  clk_IC Uclk (
+      .clk(clk),
+      .rst_n(rst_n),
+      .clk_100(clk_100)
+  );
 
   debAll #(
       .NUM(4)
   ) U_db_btn (
-      .clk(clk),
+      .clk(clk_100),
       .rst_n(rst_n),
       .in(btn),
       .db_out(db_btn)
@@ -78,9 +84,7 @@ module Game (
   assign p_up     = p_btn[1];
   assign p_down   = p_btn[3];
 
-  // ---------------------------------------------------------------------------
   // Keyboard: p_key[0]=D, p_key[1]=F, p_key[2]=J, p_key[3]=K
-  // ---------------------------------------------------------------------------
   logic       p_space;
   logic [3:0] p_key;
   logic [3:0] key_hold;
@@ -95,9 +99,7 @@ module Game (
       .key_hold(key_hold)
   );
 
-  // ---------------------------------------------------------------------------
-  // FSM control
-  // ---------------------------------------------------------------------------
+  // FSM
   logic [2:0] state_out;
   logic [1:0] countdown_num;
 
@@ -123,33 +125,54 @@ module Game (
   assign in_resume_wait = (state_out == S_RESUME_WAIT);
   assign in_finish      = (state_out == S_FINISH);
 
-  logic music_play_en;
-  logic music_reset;
-  logic play_en;
-  logic play_rst;
-
+  // ---------------------------------------------------------------------------
+  // New-round reset
+  // ---------------------------------------------------------------------------
+  // Do not reset Play/Music during pause-resume countdown.
+  // Only reset when we are in SELECT, or during the COUNTDOWN that comes
+  // immediately after SELECT.  This clears stale last_row / timers before
+  // a second game starts, but it does not affect PAUSE -> RESUME_WAIT -> COUNTDOWN.
   logic [2:0] state_d;
+  logic       new_game_start;
+  logic       new_game_countdown_rst;
 
   always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) state_d <= S_SELECT;
-    else state_d <= state_out;
+    if (!rst_n) begin
+      state_d <= S_SELECT;
+    end else begin
+      state_d <= state_out;
+    end
   end
 
-  logic new_game_start;
   assign new_game_start = (state_d == S_SELECT) && (state_out == S_COUNTDOWN);
 
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      new_game_countdown_rst <= 1'b0;
+    end else if (in_select) begin
+      new_game_countdown_rst <= 1'b0;
+    end else if (new_game_start) begin
+      new_game_countdown_rst <= 1'b1;
+    end else if (in_playing || in_pause || in_resume_wait || in_finish) begin
+      new_game_countdown_rst <= 1'b0;
+    end
+  end
 
-  assign music_play_en  = in_playing;
-  assign play_en        = in_playing;
+  logic song_selected;
+  logic fsm_start;
 
-  assign music_reset    = in_select || new_game_start;
-  assign play_rst       = in_select || new_game_start;
+  assign song_selected =
+    (menu_song_sel == 3'b001) ||
+    (menu_song_sel == 3'b010) ||
+    (menu_song_sel == 3'b100);
+
+  assign fsm_start = p_start & song_selected;
 
   game_fsm U_g_fsm (
       .clk          (clk),
       .rst_n        (rst_n),
       .frame_tick   (frame_tick),
-      .p_start      (p_start),
+      .p_start      (fsm_start),
       .p_space      (p_space),
       .song_finish  (song_finish),
       .state_out    (state_out),
@@ -182,6 +205,17 @@ module Game (
       .vol_is_open(menu_vol_is_open),
       .ui_pixel   (menu_pixel)
   );
+
+  logic music_play_en;
+  logic music_reset;
+  logic play_en;
+  logic play_rst;
+
+  assign music_play_en = in_playing;
+  assign play_en       = in_playing;
+
+  assign music_reset   = in_select || new_game_start || new_game_countdown_rst;
+  assign play_rst      = in_select || new_game_start || new_game_countdown_rst;
 
   // ---------------------------------------------------------------------------
   // Music. Music beat 同時提供 Play 軌道對齊。
@@ -251,6 +285,21 @@ module Game (
       .ui_pixel    (finish_pixel)
   );
 
+  // ---------------------------------------------------------------------------
+  // Pause / resume / countdown overlay
+  // ---------------------------------------------------------------------------
+  logic game_overlay_pixel;
+
+  game_overlay U_game_overlay (
+      .vga_x         (vga_x),
+      .vga_y         (vga_y),
+      .in_countdown  (in_countdown),
+      .in_pause      (in_pause),
+      .in_resume_wait(in_resume_wait),
+      .countdown_num (countdown_num),
+      .overlay_pixel (game_overlay_pixel)
+  );
+
   // Debug LEDs：state。想看分數低 4 bit 可以改成 play_score[3:0]
   assign leds = {1'b0, state_out};
 
@@ -271,6 +320,13 @@ module Game (
         vga_r = play_r;
         vga_g = play_g;
         vga_b = play_b;
+
+        // Overlay priority: countdown number / pause icon / resume play icon.
+        if (game_overlay_pixel) begin
+          vga_r = 4'hF;
+          vga_g = 4'hF;
+          vga_b = 4'hF;
+        end
       end else if (in_finish) begin
         vga_r = finish_pixel ? 4'hF : 4'h0;
         vga_g = finish_pixel ? 4'hF : 4'h0;
