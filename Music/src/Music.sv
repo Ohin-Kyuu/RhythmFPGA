@@ -19,6 +19,7 @@ module Music (
   beatGen U_bG (
       .clk  (clk),
       .rst_n(rst_n),
+      .clr  (music_reset),
       .sel  (song_sel),
       .beat (beat)
   );

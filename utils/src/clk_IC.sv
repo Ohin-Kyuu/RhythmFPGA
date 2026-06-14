@@ -10,6 +10,7 @@ module clk_IC (
   ) Uclk100 (
       .clk(clk),
       .rst_n(rst_n),
+      .clr(1'b0),
       .clk_out(clk_100)
   );
 

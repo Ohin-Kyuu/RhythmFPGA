@@ -21,6 +21,8 @@ module Game (
     output logic sck,
     output logic sdin,
 
+    output logic [3:0] ssd_ctl,
+    output logic [7:0] ssd_out,
     output logic [3:0] leds
 );
 
@@ -28,7 +30,8 @@ module Game (
   logic [9:0] vga_x;
   logic [9:0] vga_y;
   logic       video_valid;
-  logic       frame_tick;
+  logic       frame_tick_raw;  // generated in the 25 MHz pixel-clock domain
+  logic       frame_tick;  // clean single 100 MHz-cycle pulse, 1 per frame
 
   VGACtrl U_vg (
       .clk(clk),
@@ -38,8 +41,32 @@ module Game (
       .hsync(hsync),
       .vsync(vsync),
       .valid(video_valid),
-      .frame_tick(frame_tick)
+      .frame_tick(frame_tick_raw)
   );
+
+  // ---------------------------------------------------------------------------
+  // frame_tick clock-domain crossing fix
+  // ---------------------------------------------------------------------------
+  // frame_tick_raw comes from the 25 MHz pixel-clock domain and is held high for
+  // a full 25 MHz period (~4 cycles of the 100 MHz clk). If consumed directly,
+  // every motion update (sub_acc_px / beat_cnt in play_track_logic) fires ~4x
+  // per frame and the exact count is unstable at the domain boundary -> moving
+  // notes jitter. Synchronize into the 100 MHz domain, then rising-edge detect
+  // so the rest of the design sees exactly ONE 100 MHz-wide pulse per frame.
+  // ---------------------------------------------------------------------------
+  logic ft_s0, ft_s1, ft_s2;
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      ft_s0 <= 1'b0;
+      ft_s1 <= 1'b0;
+      ft_s2 <= 1'b0;
+    end else begin
+      ft_s0 <= frame_tick_raw;  // synchronizer FF 1
+      ft_s1 <= ft_s0;  // synchronizer FF 2
+      ft_s2 <= ft_s1;  // delayed copy for edge detect
+    end
+  end
+  assign frame_tick = ft_s1 & ~ft_s2;  // one clean pulse per frame
 
   // Buttons
   // btn[0] start / back 
@@ -125,38 +152,22 @@ module Game (
   assign in_resume_wait = (state_out == S_RESUME_WAIT);
   assign in_finish      = (state_out == S_FINISH);
 
-  // ---------------------------------------------------------------------------
-  // New-round reset
-  // ---------------------------------------------------------------------------
-  // Do not reset Play/Music during pause-resume countdown.
-  // Only reset when we are in SELECT, or during the COUNTDOWN that comes
-  // immediately after SELECT.  This clears stale last_row / timers before
-  // a second game starts, but it does not affect PAUSE -> RESUME_WAIT -> COUNTDOWN.
-  logic [2:0] state_d;
-  logic       new_game_start;
-  logic       new_game_countdown_rst;
+  logic countdown_is_new_game;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      state_d <= S_SELECT;
-    end else begin
-      state_d <= state_out;
-    end
-  end
-
-  assign new_game_start = (state_d == S_SELECT) && (state_out == S_COUNTDOWN);
-
-  always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      new_game_countdown_rst <= 1'b0;
+      countdown_is_new_game <= 1'b1;
     end else if (in_select) begin
-      new_game_countdown_rst <= 1'b0;
-    end else if (new_game_start) begin
-      new_game_countdown_rst <= 1'b1;
-    end else if (in_playing || in_pause || in_resume_wait || in_finish) begin
-      new_game_countdown_rst <= 1'b0;
+      countdown_is_new_game <= 1'b1;  // any countdown reached from the menu is a new game
+    end else if (in_resume_wait) begin
+      countdown_is_new_game <= 1'b0;  // resume from pause -> keep score/progress
+    end else if (in_playing || in_pause || in_finish) begin
+      countdown_is_new_game <= 1'b0;
     end
   end
+
+  logic round_rst;
+  assign round_rst = in_select || (in_countdown && countdown_is_new_game);
 
   logic song_selected;
   logic fsm_start;
@@ -168,17 +179,17 @@ module Game (
 
   assign fsm_start = p_start & song_selected;
 
-  game_fsm U_g_fsm (
+  game_fsm #(
+      .CLK_HZ(100_000_000)
+  ) U_g_fsm (
       .clk          (clk),
       .rst_n        (rst_n),
-      .frame_tick   (frame_tick),
       .p_start      (fsm_start),
       .p_space      (p_space),
       .song_finish  (song_finish),
       .state_out    (state_out),
       .countdown_num(countdown_num)
   );
-
   // ---------------------------------------------------------------------------
   // Menu
   // ---------------------------------------------------------------------------
@@ -214,12 +225,10 @@ module Game (
   assign music_play_en = in_playing;
   assign play_en       = in_playing;
 
-  assign music_reset   = in_select || new_game_start || new_game_countdown_rst;
-  assign play_rst      = in_select || new_game_start || new_game_countdown_rst;
+  assign music_reset   = round_rst;
+  assign play_rst      = round_rst;
 
-  // ---------------------------------------------------------------------------
-  // Music. Music beat 同時提供 Play 軌道對齊。
-  // ---------------------------------------------------------------------------
+  // Music
   logic music_beat;
 
   Music Ums (
@@ -236,9 +245,8 @@ module Game (
       .sck          (sck),
       .sdin         (sdin)
   );
-  // ---------------------------------------------------------------------------
+
   // Play screen / scoring
-  // ---------------------------------------------------------------------------
   logic [3:0] play_r, play_g, play_b;
   logic [15:0] play_score;
 
@@ -266,10 +274,7 @@ module Game (
       .song_finish(play_song_finish)
   );
 
-
-  // ---------------------------------------------------------------------------
-  // Finish screen
-  // ---------------------------------------------------------------------------
+  // Finish
   logic finish_pixel;
   logic finish_back_to_menu;
 
@@ -285,9 +290,50 @@ module Game (
       .ui_pixel    (finish_pixel)
   );
 
-  // ---------------------------------------------------------------------------
+
+  logic [3:0] bcd_out[0:3];
+  logic [3:0][3:0] ssd_num;
+
+  Bin2BCD U_B2BCD (
+      .bin_in(play_score),
+      .bcd3  (bcd_out[3]),
+      .bcd2  (bcd_out[2]),
+      .bcd1  (bcd_out[1]),
+      .bcd0  (bcd_out[0])
+  );
+
+  localparam logic [3:0] OFF = 4'd15;
+  always_comb begin
+    ssd_num[3] = OFF;
+    ssd_num[2] = OFF;
+    ssd_num[1] = OFF;
+    ssd_num[0] = OFF;
+
+    if (in_countdown || in_playing || in_pause || in_resume_wait || in_finish) begin
+      ssd_num[3] = (bcd_out[3] == 4'd0) ? OFF : bcd_out[3];
+
+      ssd_num[2] = ((bcd_out[3] == 4'd0) && (bcd_out[2] == 4'd0)) ? OFF : bcd_out[2];
+
+      ssd_num[1] = ((bcd_out[3] == 4'd0) &&
+                  (bcd_out[2] == 4'd0) &&
+                  (bcd_out[1] == 4'd0)) ? OFF : bcd_out[1];
+
+      ssd_num[0] = bcd_out[0];
+    end
+  end
+
+  SSD #(
+      .NUM(4),
+      .BIT(4)
+  ) U_SSD (
+      .clk    (clk),
+      .rst_n  (rst_n),
+      .num    (ssd_num),
+      .ssd_ctl(ssd_ctl),
+      .ssd_out(ssd_out)
+  );
+
   // Pause / resume / countdown overlay
-  // ---------------------------------------------------------------------------
   logic game_overlay_pixel;
 
   game_overlay U_game_overlay (
@@ -300,12 +346,10 @@ module Game (
       .overlay_pixel (game_overlay_pixel)
   );
 
-  // Debug LEDs：state。想看分數低 4 bit 可以改成 play_score[3:0]
+  // Debug LEDs：state
   assign leds = {1'b0, state_out};
 
-  // ---------------------------------------------------------------------------
   // VGA mux
-  // ---------------------------------------------------------------------------
   always_comb begin
     vga_r = 4'h0;
     vga_g = 4'h0;

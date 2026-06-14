@@ -4,6 +4,7 @@ module clkgen #(
 ) (
     input  logic clk,
     input  logic rst_n,
+    input  logic clr,
     output logic clk_out
 );
 
@@ -23,6 +24,9 @@ module clkgen #(
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (~rst_n) begin
+      cnt <= '0;
+      clk_out <= 1'b0;
+    end else if (clr) begin
       cnt <= '0;
       clk_out <= 1'b0;
     end else begin

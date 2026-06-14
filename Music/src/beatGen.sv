@@ -1,8 +1,9 @@
 module beatGen (
-    input logic clk,
-    input logic rst_n,
-    input logic [2:0] sel,
-    output logic beat
+    input  logic       clk,
+    input  logic       rst_n,
+    input  logic       clr,    // restart beat phase at the start of every round
+    input  logic [2:0] sel,
+    output logic       beat
 );
 
   parameter BEAT_MAX_MARIO = 24'd14285700;
@@ -19,6 +20,7 @@ module beatGen (
   ) U_clk_mario (
       .clk(clk),
       .rst_n(rst_n),
+      .clr(clr),
       .clk_out(clk_mario)
   );
 
@@ -28,6 +30,7 @@ module beatGen (
   ) U_clk_zelda (
       .clk(clk),
       .rst_n(rst_n),
+      .clr(clr),
       .clk_out(clk_zelda)
   );
 
@@ -37,6 +40,7 @@ module beatGen (
   ) U_clk_poke (
       .clk(clk),
       .rst_n(rst_n),
+      .clr(clr),
       .clk_out(clk_pokemon)
   );
 

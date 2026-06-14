@@ -3,23 +3,20 @@ module linegen #(
     parameter logic [11:0] LEN_ZELDA   = 12'd769,
     parameter logic [11:0] LEN_POKEMON = 12'd2177
 ) (
-    input  logic        clk,
-    input  logic        rst_n,
-    input  logic        restart,
-    input  logic [ 2:0] sel,
-    input  logic        beat,
-    input  logic        playing,
+    input logic       clk,
+    input logic       rst_n,
+    input logic       restart,
+    input logic [2:0] sel,
+    input logic       beat,
+    input logic       playing,
+
     output logic [65:0] line,
     output logic        finish
 );
 
-  // logic [65:0] mario_rom  [  0:LEN_MARIO-1];
-  // logic [65:0] zelda_rom  [  0:LEN_ZELDA-1];
-  // logic [65:0] pokemon_rom[0:LEN_POKEMON-1];
-
-  logic [65:0] mario_rom  [0:4095];
-  logic [65:0] zelda_rom  [0:4095];
-  logic [65:0] pokemon_rom[0:4095];
+  (* rom_style = "block" *)logic [65:0] mario_rom  [0:4095];
+  (* rom_style = "block" *)logic [65:0] zelda_rom  [0:4095];
+  (* rom_style = "block" *)logic [65:0] pokemon_rom[0:4095];
 
   initial begin
     $readmemh("mario_rom.mem", mario_rom);
@@ -29,9 +26,10 @@ module linegen #(
 
   logic [11:0] max_len;
   logic [11:0] rom_addr;
+  logic [65:0] rom_data;
 
   always_comb begin
-    case (sel)
+    unique case (sel)
       3'b001:  max_len = LEN_MARIO;
       3'b010:  max_len = LEN_ZELDA;
       3'b100:  max_len = LEN_POKEMON;
@@ -42,23 +40,34 @@ module linegen #(
   assign finish = playing && beat && (rom_addr >= max_len - 12'd1);
 
   always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n) rom_addr <= 12'd0;
-    else if (restart) rom_addr <= 12'd0;
-    else if (finish) rom_addr <= 12'd0;
-    else if (playing && beat) rom_addr <= rom_addr + 12'd1;
+    if (!rst_n) begin
+      rom_addr <= 12'd0;
+    end else if (restart) begin
+      rom_addr <= 12'd0;
+    end else if (finish) begin
+      rom_addr <= 12'd0;
+    end else if (playing && beat) begin
+      rom_addr <= rom_addr + 12'd1;
+    end
   end
 
-  always_comb begin
-    if (!playing) begin
-      line = 66'd0;
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      rom_data <= 66'd0;
+    end else if (restart) begin
+      rom_data <= 66'd0;
+    end else if (!playing) begin
+      rom_data <= 66'd0;
     end else begin
-      case (sel)
-        3'b001:  line = mario_rom[rom_addr];
-        3'b010:  line = zelda_rom[rom_addr];
-        3'b100:  line = pokemon_rom[rom_addr];
-        default: line = 66'd0;
+      unique case (sel)
+        3'b001:  rom_data <= mario_rom[rom_addr];
+        3'b010:  rom_data <= zelda_rom[rom_addr];
+        3'b100:  rom_data <= pokemon_rom[rom_addr];
+        default: rom_data <= 66'd0;
       endcase
     end
   end
+
+  assign line = rom_data;
 
 endmodule

@@ -201,9 +201,10 @@ module play_track_logic #(
       if (beat_p) beat_pending <= 1'b1;
 
       if (frame_tick) begin
-        logic do_beat = beat_pending || beat_p;
+        logic do_beat;
         logic [8:0] temp_a;
         logic [7:0] temp_px;
+        do_beat = beat_pending || beat_p;
 
         for (int i = 0; i < 4; i++) begin
           if (press_tmr[i] != 0) press_tmr[i] <= press_tmr[i] - 1;
