@@ -21,9 +21,9 @@ module Game (
     output logic sck,
     output logic sdin,
 
-    output logic [3:0] ssd_ctl,
-    output logic [7:0] ssd_out,
-    output logic [3:0] leds
+    output logic [ 3:0] ssd_ctl,
+    output logic [ 7:0] ssd_out,
+    output logic [15:0] leds
 );
 
   // VGA timing
@@ -44,16 +44,6 @@ module Game (
       .frame_tick(frame_tick_raw)
   );
 
-  // ---------------------------------------------------------------------------
-  // frame_tick clock-domain crossing fix
-  // ---------------------------------------------------------------------------
-  // frame_tick_raw comes from the 25 MHz pixel-clock domain and is held high for
-  // a full 25 MHz period (~4 cycles of the 100 MHz clk). If consumed directly,
-  // every motion update (sub_acc_px / beat_cnt in play_track_logic) fires ~4x
-  // per frame and the exact count is unstable at the domain boundary -> moving
-  // notes jitter. Synchronize into the 100 MHz domain, then rising-edge detect
-  // so the rest of the design sees exactly ONE 100 MHz-wide pulse per frame.
-  // ---------------------------------------------------------------------------
   logic ft_s0, ft_s1, ft_s2;
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -347,7 +337,19 @@ module Game (
   );
 
   // Debug LEDs：state
-  assign leds = {1'b0, state_out};
+  ledbar U_ledbar (
+      .clk                   (clk),
+      .rst_n                 (rst_n),
+      .song_sel              (menu_song_sel),
+      .beat                  (music_beat),
+      .in_select             (in_select),
+      .new_game_countdown_rst(round_rst),
+      .in_countdown          (in_countdown),
+      .in_playing            (in_playing),
+      .in_pause              (in_pause),
+      .in_resume_wait        (in_resume_wait),
+      .led_out               (leds)
+  );
 
   // VGA mux
   always_comb begin
