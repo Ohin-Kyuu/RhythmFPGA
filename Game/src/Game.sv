@@ -83,6 +83,7 @@ module Game (
   // ---------------------------------------------------------------------------
   logic       p_space;
   logic [3:0] p_key;
+  logic [3:0] key_hold;
 
   KeyPulse Ukp (
       .clk(clk),
@@ -90,7 +91,8 @@ module Game (
       .PS2_CLK(PS2_CLK),
       .PS2_DATA(PS2_DATA),
       .p_space(p_space),
-      .p_key(p_key)
+      .p_key(p_key),
+      .key_hold(key_hold)
   );
 
   // ---------------------------------------------------------------------------
@@ -103,6 +105,7 @@ module Game (
   logic play_song_finish;
   logic song_finish;
 
+  // 目前先以 Music 結束作為真正遊戲結束條件；Play 的 finish 可當 debug。
   assign song_finish = music_song_finish;
 
   localparam logic [2:0] S_SELECT = 3'd0;
@@ -129,7 +132,6 @@ module Game (
   assign music_play_en = in_playing;
   assign play_en       = in_playing;
 
-  // SELECT 時重置音樂與遊戲軌道；PAUSE / RESUME_COUNTDOWN 不重置，才能接續。
   assign music_reset   = in_select;
   assign play_rst      = in_select;
 
@@ -190,7 +192,6 @@ module Game (
       .sck          (sck),
       .sdin         (sdin)
   );
-
   // ---------------------------------------------------------------------------
   // Play screen / scoring
   // ---------------------------------------------------------------------------
@@ -200,15 +201,20 @@ module Game (
   Play Upy (
       .clk        (clk),
       .rst_n      (rst_n),
+      // vga in 
       .vga_x      (vga_x),
       .vga_y      (vga_y),
       .video_valid(video_valid),
       .frame_tick (frame_tick),
       .beat       (music_beat),
+      // FSM
       .play_en    (play_en),
       .play_rst   (play_rst),
       .sel_song   (menu_song_sel),
+      // Keyboard
       .p_key      (p_key),
+      .key_hold   (key_hold),
+      // vga out
       .vga_r      (play_r),
       .vga_g      (play_g),
       .vga_b      (play_b),
@@ -216,6 +222,7 @@ module Game (
       .song_finish(play_song_finish)
   );
 
+  // Debug LEDs：state。想看分數低 4 bit 可以改成 play_score[3:0]
   assign leds = {1'b0, state_out};
 
   // ---------------------------------------------------------------------------

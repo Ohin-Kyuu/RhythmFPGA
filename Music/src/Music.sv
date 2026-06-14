@@ -18,15 +18,17 @@ module Music (
 
   beatGen U_bG (
       .clk  (clk),
-      .rst_n(rst_n & ~music_reset),
+      .rst_n(rst_n),
       .sel  (song_sel),
       .beat (beat)
   );
 
   logic [65:0] line_out;
+
   linegen U_lg_rom (
       .clk    (clk),
-      .rst_n  (rst_n & ~music_reset),
+      .rst_n  (rst_n),
+      .restart(music_reset),
       .sel    (song_sel),
       .playing(music_playing),
       .beat   (beat),
@@ -35,14 +37,16 @@ module Music (
   );
 
   logic signed [15:0] mix_l, mix_r;
+
   trackMix U_tM (
-      .clk   (clk),
-      .rst_n (rst_n & ~music_reset),
-      .volume(volume),
-      .beat  (beat),
-      .line  (line_out),
-      .mix_l (mix_l),
-      .mix_r (mix_r)
+      .clk    (clk),
+      .rst_n  (rst_n),
+      .playing(music_playing),
+      .volume (volume),
+      .beat   (beat),
+      .line   (line_out),
+      .mix_l  (mix_l),
+      .mix_r  (mix_r)
   );
 
   speakCtrl U_sc (

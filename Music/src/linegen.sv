@@ -5,6 +5,7 @@ module linegen #(
 ) (
     input  logic        clk,
     input  logic        rst_n,
+    input  logic        restart,
     input  logic [ 2:0] sel,
     input  logic        beat,
     input  logic        playing,
@@ -41,13 +42,10 @@ module linegen #(
   assign finish = playing && beat && (rom_addr >= max_len - 12'd1);
 
   always_ff @(posedge clk or negedge rst_n) begin
-    if (~rst_n) begin
-      rom_addr <= 12'd0;
-    end else if (finish) begin
-      rom_addr <= 12'd0;
-    end else if (playing && beat) begin
-      rom_addr <= rom_addr + 12'd1;
-    end
+    if (!rst_n) rom_addr <= 12'd0;
+    else if (restart) rom_addr <= 12'd0;
+    else if (finish) rom_addr <= 12'd0;
+    else if (playing && beat) rom_addr <= rom_addr + 12'd1;
   end
 
   always_comb begin

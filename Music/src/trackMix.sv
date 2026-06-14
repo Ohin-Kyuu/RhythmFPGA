@@ -1,6 +1,7 @@
 module trackMix (
     input logic clk,
     input logic rst_n,
+    input logic playing,
     input logic [3:0] volume,
     input logic beat,
     input logic [65:0] line,
@@ -19,16 +20,16 @@ module trackMix (
       track1_prev <= 22'd0;
       track2_prev <= 22'd0;
       track3_prev <= 22'd0;
-    end else if (beat) begin
+    end else if (playing && beat) begin
       track1_prev <= track1;
       track2_prev <= track2;
       track3_prev <= track3;
     end
   end
 
-  assign clear1 = beat && (track1 != track1_prev);
-  assign clear2 = beat && (track2 != track2_prev);
-  assign clear3 = beat && (track3 != track3_prev);
+  assign clear1 = playing && beat && (track1 != track1_prev);
+  assign clear2 = playing && beat && (track2 != track2_prev);
+  assign clear3 = playing && beat && (track3 != track3_prev);
 
   logic signed [15:0] t1_l, t1_r;
   logic signed [15:0] t2_l, t2_r;

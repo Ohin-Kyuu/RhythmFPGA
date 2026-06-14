@@ -27,7 +27,8 @@ module Play (
     input  logic       play_en,
     input  logic       play_rst,
     input  logic [2:0] sel_song,   // 001:mario 010:zelda 100:pokemon
-    input  logic [3:0] p_key,      // D,F,J,K pulse
+    input  logic [3:0] p_key,      // D,F,J,K pulse（單拍 pulse）
+    input  logic [3:0] key_hold,   // D,F,J,K level（持續按住狀態，給長按判定）
 
     // VGA 輸出
     output logic [3:0] vga_r,
@@ -66,6 +67,7 @@ module Play (
       .play_rst       (play_rst),
       .sel_song       (sel_song),
       .p_key          (p_key),
+      .key_hold       (key_hold),
       .vga_x          (vga_x),
       .vga_y          (vga_y),
       .note_on        (note_on),
@@ -83,10 +85,15 @@ module Play (
   // ---------------------------------------------------------------------------
   logic rec_on, text_on;
 
+  // key_hold 直接接到 receptor，讓 DFJK 按住時 UI 立即有按下反應；
+  // lane_pressed 則保留 p_key 觸發的短暫 flash。
+  logic [3:0] lane_pressed_ui;
+  assign lane_pressed_ui = lane_pressed | key_hold;
+
   play_receptors U_rec (
       .vga_x          (vga_x),
       .vga_y          (vga_y),
-      .lane_pressed   (lane_pressed),
+      .lane_pressed   (lane_pressed_ui),
       .lane_show_valid(lane_show_valid),
       .lane_show_text (lane_show_text),
       .lane_rating    (lane_rating),
