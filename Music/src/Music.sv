@@ -7,6 +7,7 @@ module Music (
     input logic       music_playing,
     input logic       music_reset,
 
+    output logic beat,
     output logic song_finish,
 
     output logic mclk,
@@ -15,7 +16,6 @@ module Music (
     output logic sdin
 );
 
-  logic beat;
   beatGen U_bG (
       .clk  (clk),
       .rst_n(rst_n & ~music_reset),
