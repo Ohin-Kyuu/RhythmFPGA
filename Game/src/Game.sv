@@ -196,7 +196,7 @@ module Game (
   // Play screen / scoring
   // ---------------------------------------------------------------------------
   logic [3:0] play_r, play_g, play_b;
-  logic [11:0] play_score;
+  logic [15:0] play_score;
 
   Play Upy (
       .clk        (clk),

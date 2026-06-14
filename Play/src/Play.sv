@@ -36,7 +36,7 @@ module Play (
     output logic [3:0] vga_b,
 
     // 給 game_fsm / Finish
-    output logic [11:0] score,
+    output logic [15:0] score,
     output logic        song_finish
 );
 
@@ -85,15 +85,10 @@ module Play (
   // ---------------------------------------------------------------------------
   logic rec_on, text_on;
 
-  // key_hold 直接接到 receptor，讓 DFJK 按住時 UI 立即有按下反應；
-  // lane_pressed 則保留 p_key 觸發的短暫 flash。
-  logic [3:0] lane_pressed_ui;
-  assign lane_pressed_ui = lane_pressed | key_hold;
-
   play_receptors U_rec (
       .vga_x          (vga_x),
       .vga_y          (vga_y),
-      .lane_pressed   (lane_pressed_ui),
+      .lane_pressed   (lane_pressed | key_hold),
       .lane_show_valid(lane_show_valid),
       .lane_show_text (lane_show_text),
       .lane_rating    (lane_rating),
