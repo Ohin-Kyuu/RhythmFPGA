@@ -1,113 +1,48 @@
 module Music (
     input logic clk,
     input logic rst_n,
-    input logic [2:0] btn,
-    input logic [2:0] sw,  // 001: mario, 010: zelda, 100: pokemon
 
-    // Audio
+    input logic [2:0] song_sel,
+    input logic [3:0] volume,
+    input logic       music_playing,
+    input logic       music_reset,
+
+    output logic song_finish,
+
     output logic mclk,
     output logic lrck,
     output logic sck,
-    output logic sdin,
-    output logic [3:0] leds
+    output logic sdin
 );
-
-  logic [2:0] sel_song;
-  assign sel_song = sw;
-
-  logic clk_100;
-  clk_IC U_clk_100 (
-      .clk    (clk),
-      .rst_n  (rst_n),
-      .clk_100(clk_100)
-  );
-
-  logic [2:0] db;
-  logic db_play;
-  logic [1:0] db_vol;
-  debAll #(
-      .NUM(3)
-  ) U_db (
-      .clk(clk_100),
-      .rst_n(rst_n),
-      .in(btn),
-      .db_out(db)
-  );
-  assign {db_play, db_vol} = db;
-
-  logic p_play;
-  pulsegen U_pg_play (
-      .clk(clk),
-      .rst_n(rst_n),
-      .in(db_play),
-      .pulse(p_play)
-  );
-
-  logic [1:0] p_vol;
-  pulAll #(
-      .NUM(2)
-  ) U_pg (
-      .clk(clk_100),
-      .rst_n(rst_n),
-      .in(db_vol),
-      .p_out(p_vol)
-  );
 
   logic beat;
   beatGen U_bG (
       .clk  (clk),
-      .rst_n(rst_n),
-      .sel  (sel_song),
+      .rst_n(rst_n & ~music_reset),
+      .sel  (song_sel),
       .beat (beat)
   );
 
-  logic playing;
-  logic finish;
   logic [65:0] line_out;
-
-  fsm U_fsm (
-      .clk      (clk),
-      .rst_n    (rst_n),
-      .p_play   (p_play),
-      .finish   (finish),
-      // output
-      .playing  (playing),
-      .clear_n  (),
-      .state_out()
-  );
-
   linegen U_lg_rom (
       .clk    (clk),
-      .rst_n  (rst_n),
-      .sel    (sel_song),
-      .playing(playing),
+      .rst_n  (rst_n & ~music_reset),
+      .sel    (song_sel),
+      .playing(music_playing),
       .beat   (beat),
-      // output
       .line   (line_out),
-      .finish (finish)
+      .finish (song_finish)
   );
 
-  logic [3:0] volume;
   logic signed [15:0] mix_l, mix_r;
-
-  volctrl U_vc (
-      .clk(clk_100),
-      .rst_n(rst_n),
-      .up(p_vol[1]),
-      .down(p_vol[0]),
-      .volume(volume)
-  );
-
-  assign leds = volume;
-
   trackMix U_tM (
-      .clk(clk),
-      .rst_n(rst_n),
+      .clk   (clk),
+      .rst_n (rst_n & ~music_reset),
       .volume(volume),
-      .beat(beat),
-      .line(line_out),
-      .mix_l(mix_l),
-      .mix_r(mix_r)
+      .beat  (beat),
+      .line  (line_out),
+      .mix_l (mix_l),
+      .mix_r (mix_r)
   );
 
   speakCtrl U_sc (

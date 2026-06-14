@@ -1,7 +1,7 @@
 module ui_menu_fsm #(
-    parameter int SCROLL_PERIOD_TICK = 1_500_000,
-    parameter int SCROLL_PERIOD_PX   = 174,
-    parameter int BAR_SLIDE          = 10
+    parameter int SCROLL_FRAME_DIV = 3,
+    parameter int SCROLL_PERIOD_PX = 174,
+    parameter int BAR_SLIDE        = 10
 ) (
     input logic clk,
     input logic rst_n,
@@ -9,48 +9,55 @@ module ui_menu_fsm #(
     input logic vol_toggle_pulse,
     input logic frame_tick,
 
-    output logic vol_is_open,
+    output logic       vol_is_open,
     output logic [5:0] vol_slide_y,
-    output logic [7:0] scroll_offset
+    output logic [8:0] scroll_offset
 );
 
-  logic [21:0] scroll_timer;
-  localparam logic [21:0] SCROLL_PERIOD_TICK_22 = SCROLL_PERIOD_TICK[21:0];
+  localparam logic [8:0] SCROLL_PERIOD_PX_9 = SCROLL_PERIOD_PX[8:0];
 
-  always_ff @(posedge clk, negedge rst_n) begin
-    if (~rst_n) begin
+  logic [$clog2(SCROLL_FRAME_DIV)-1:0] scroll_frame_cnt;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
       vol_is_open <= 1'b0;
     end else if (vol_toggle_pulse) begin
       vol_is_open <= ~vol_is_open;
     end
   end
 
-  always_ff @(posedge clk, negedge rst_n) begin
-    if (~rst_n) begin
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
       vol_slide_y <= '0;
     end else if (frame_tick) begin
-      if (vol_is_open && vol_slide_y < BAR_SLIDE) begin
-        vol_slide_y <= vol_slide_y + 1'b1;
-      end else if (!vol_is_open && vol_slide_y > 0) begin
-        vol_slide_y <= vol_slide_y - 1'b1;
+      if (vol_is_open && vol_slide_y < BAR_SLIDE[5:0]) begin
+        vol_slide_y <= vol_slide_y + 6'd1;
+      end else if (!vol_is_open && vol_slide_y > 6'd0) begin
+        vol_slide_y <= vol_slide_y - 6'd1;
       end
     end
   end
 
-  always_ff @(posedge clk, negedge rst_n) begin
-    if (~rst_n) begin
-      scroll_timer  <= '0;
-      scroll_offset <= '0;
-    end else if (valid_song) begin
-      if (scroll_timer == SCROLL_PERIOD_TICK_22) begin
-        scroll_timer  <= '0;
-        scroll_offset <= (scroll_offset == SCROLL_PERIOD_PX - 1) ? '0 : scroll_offset + 1'b1;
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      scroll_frame_cnt <= '0;
+      scroll_offset    <= '0;
+    end else if (!valid_song) begin
+      scroll_frame_cnt <= '0;
+      scroll_offset    <= '0;
+    end else if (frame_tick) begin
+      if (scroll_frame_cnt == SCROLL_FRAME_DIV - 1) begin
+        scroll_frame_cnt <= '0;
+
+        if (scroll_offset == SCROLL_PERIOD_PX_9 - 9'd1) begin
+          scroll_offset <= '0;
+        end else begin
+          scroll_offset <= scroll_offset + 9'd1;
+        end
+
       end else begin
-        scroll_timer <= scroll_timer + 1'b1;
+        scroll_frame_cnt <= scroll_frame_cnt + 1'b1;
       end
-    end else begin
-      scroll_timer  <= '0;
-      scroll_offset <= '0;
     end
   end
 

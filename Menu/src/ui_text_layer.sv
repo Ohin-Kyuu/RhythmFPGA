@@ -3,27 +3,27 @@ module ui_text_layer (
     input logic [9:0] vga_y,
     input logic       valid_song,
     input logic [2:0] sw,
-    input logic [7:0] scroll_offset,
+    input logic [8:0] scroll_offset,
     input logic [9:0] start_text_y,
     input logic [9:0] vol_text_y,
 
     output logic glyph_on,
-    output logic glyph_black
+    output logic glyph_black,
+    output logic text_bg_active
 );
 
-  localparam int CHAR_W = 6;
-  localparam int CHAR_PIX_W = 5;
-  localparam int UPPER_CHAR_H = 7;
-  localparam int LOWER_CHAR_H = 8;
+  localparam logic [3:0] CHAR_W = 4'd6;
+  localparam logic [2:0] CHAR_PIX_W = 3'd5;
+  localparam logic [3:0] UPPER_CHAR_H = 4'd7;
+  localparam logic [3:0] LOWER_CHAR_H = 4'd8;
 
   localparam int TEXT_AREA_X = 256;
   localparam int TEXT_AREA_Y = 226;
   localparam int TEXT_AREA_W = 129;
   localparam int TEXT_AREA_H = 8;
 
-  localparam int SCROLL_TEXT_W = 144;
-  localparam int SCROLL_GAP_W = 30;
-  localparam int SCROLL_LOOP_W = SCROLL_TEXT_W + SCROLL_GAP_W;  // 174
+  localparam logic [9:0] SCROLL_TEXT_W = 10'd144;
+  localparam logic [9:0] SCROLL_LOOP_W = 10'd174;
 
   localparam logic [8*4-1:0] STR_SONG = "SONG";
   localparam logic [8*5-1:0] STR_START = "START";
@@ -87,16 +87,17 @@ module ui_text_layer (
   logic [9:0] loop_x;
 
   always_comb begin
-    render_text  = 1'b0;
-    glyph_black  = 1'b0;
-    target_char  = " ";
-    char_pixel_x = '0;
-    char_pixel_y = '0;
+    render_text    = 1'b0;
+    glyph_black    = 1'b0;
+    target_char    = " ";
+    char_pixel_x   = '0;
+    char_pixel_y   = '0;
 
-    text_x       = '0;
-    char_index   = '0;
-    area_x       = '0;
-    loop_x       = '0;
+    text_x         = '0;
+    char_index     = '0;
+    area_x         = '0;
+    loop_x         = '0;
+    text_bg_active = in_rect(vga_x, vga_y, TEXT_AREA_X, TEXT_AREA_Y, TEXT_AREA_W, TEXT_AREA_H);
 
     // SONG title
     if (in_rect(vga_x, vga_y, 309, 206, 4 * CHAR_W, UPPER_CHAR_H)) begin
@@ -148,7 +149,7 @@ module ui_text_layer (
         // Song selected: seamless marquee
       end else begin
         area_x = vga_x - TEXT_AREA_X;
-        loop_x = area_x + {2'd0, scroll_offset};
+        loop_x = area_x + {1'b0, scroll_offset};
 
         if (loop_x >= SCROLL_LOOP_W) begin
           loop_x = loop_x - SCROLL_LOOP_W;

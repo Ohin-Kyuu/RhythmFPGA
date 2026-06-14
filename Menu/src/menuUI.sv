@@ -72,7 +72,7 @@ module menuUI (
   );
 
   logic [5:0] vol_slide_y;
-  logic [7:0] scroll_offset;
+  logic [8:0] scroll_offset;
 
   ui_menu_fsm #(
       .BAR_SLIDE(VOL_BAR_SLIDE)
@@ -145,6 +145,7 @@ module menuUI (
 
   logic glyph_on;
   logic glyph_black;
+  logic text_bg_active;
   logic [9:0] start_text_y_now;
   logic [9:0] vol_text_y_now;
 
@@ -152,15 +153,16 @@ module menuUI (
   assign vol_text_y_now   = VOL_TEXT_Y + (vol_pressed ? 10'd2 : 10'd0);
 
   ui_text_layer U_text (
-      .vga_x        (vga_x),
-      .vga_y        (vga_y),
-      .valid_song   (valid_song),
-      .sw           (sw),
-      .scroll_offset(scroll_offset),
-      .start_text_y (start_text_y_now),
-      .vol_text_y   (vol_text_y_now),
-      .glyph_on     (glyph_on),
-      .glyph_black  (glyph_black)
+      .vga_x         (vga_x),
+      .vga_y         (vga_y),
+      .valid_song    (valid_song),
+      .sw            (sw),
+      .scroll_offset (scroll_offset),
+      .start_text_y  (start_text_y_now),
+      .vol_text_y    (vol_text_y_now),
+      .glyph_on      (glyph_on),
+      .glyph_black   (glyph_black),
+      .text_bg_active(text_bg_active)
   );
 
   always_comb begin
@@ -184,6 +186,10 @@ module menuUI (
 
     if (bar_active) begin
       ui_pixel = bar_pixel;
+    end
+
+    if (text_bg_active) begin
+      ui_pixel = 1'b0;
     end
 
     if (glyph_on) begin
