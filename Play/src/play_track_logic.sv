@@ -20,7 +20,6 @@ module play_track_logic #(
     input logic [3:0] p_key,
     input logic [3:0] key_hold,
 
-    // 輸出給 Render 與 UI
     output logic [11:0] beat_cnt,
     output logic [ 7:0] sub_acc_px,
     output logic [ 3:0] lane_pressed,
@@ -70,10 +69,6 @@ module play_track_logic #(
     end
   endfunction
 
-  // Beat tick
-  // beatGen already outputs a one-clock pulse synchronous to clk, and Music/linegen
-  // advances directly with `music_playing && beat`.  Use the exact same pulse here
-  // so Play and Music cannot drift because of an extra local edge-detector delay.
   logic beat_p;
   assign beat_p = play_en && beat;
 
@@ -119,7 +114,7 @@ module play_track_logic #(
     in_win = (c >= WIN_LO[9:0]) && (c <= WIN_HI[9:0]);
   endfunction
 
-  function automatic logic row_has_note(input logic [11:0] row, input int l);
+  function automatic logic row_has_note(input logic [11:0] row, input logic [1:0] l);
     logic [3:0] m;
     begin
       m = rom_at(row);
@@ -177,72 +172,128 @@ module play_track_logic #(
     end
   end
 
+  // ===========================================================================
+  // 核心主邏輯：完全分離 rst_n 與 play_rst，確保合成器生成乾淨的 Reset 電路
+  // ===========================================================================
   always_ff @(posedge clk or negedge rst_n) begin
-    if (!rst_n || play_rst) begin
-      beat_cnt     <= '0;
-      frame_cnt    <= '0;
-      sub_acc      <= '0;
-      sub_acc_px   <= '0;
+    if (!rst_n) begin
+      // 硬體全域重置
+      beat_cnt <= '0;
+      frame_cnt <= '0;
+      sub_acc <= '0;
+      sub_acc_px <= '0;
       beat_pending <= 0;
-      fpb          <= FPB_DEFAULT[7:0];
-      score        <= '0;
-      song_finish  <= 0;
+      fpb <= FPB_DEFAULT[7:0];
+      score <= '0;
+      song_finish <= 0;
       for (int i = 0; i < 4; i++) begin
-        last_row[i]    <= 12'hFFF; // 修正死鎖：初始化為 FFF (-1)
-        press_tmr[i]   <= '0;
-        valid_tmr[i]   <= '0;
-        rating_rg[i]   <= R_NONE;
+        last_row[i] <= 12'hFFF;
+        press_tmr[i] <= '0;
+        valid_tmr[i] <= '0;
+        rating_rg[i] <= R_NONE;
+        hold_active[i] <= 0;
+      end
+    end else if (play_rst) begin
+      // 新遊戲重置 (軟體重置)
+      beat_cnt <= '0;
+      frame_cnt <= '0;
+      sub_acc <= '0;
+      sub_acc_px <= '0;
+      beat_pending <= 0;
+      fpb <= FPB_DEFAULT[7:0];
+      score <= '0;
+      song_finish <= 0;
+      for (int i = 0; i < 4; i++) begin
+        last_row[i] <= 12'hFFF;
+        press_tmr[i] <= '0;
+        valid_tmr[i] <= '0;
+        rating_rg[i] <= R_NONE;
         hold_active[i] <= 0;
       end
     end else if (play_en && !song_finish) begin
-      logic [16:0] next_score;  // 17-bit 暫存，最後飽和到 SCORE_MAX
+      logic [16:0] next_score;
       next_score = {1'b0, score};
 
       if (beat_p) beat_pending <= 1'b1;
 
+      for (int i = 0; i < 4; i++) begin
+        if (p_key[i]) begin
+          press_tmr[i] <= PRESS_FLASH[7:0];
+          if (j_hit[i]) begin
+            last_row[i]  <= j_row[i];
+            rating_rg[i] <= j_rate[i];
+            valid_tmr[i] <= VALID_SHOW[7:0];
+            next_score += {13'd0, j_score[i]};
+            if (row_has_note(
+                    j_row[i], i[1:0]
+                ) && row_has_note(
+                    j_row[i] + 1, i[1:0]
+                ) && !(j_row[i] > 0 && row_has_note(
+                    j_row[i] - 1, i[1:0]
+                )))
+              hold_active[i] <= 1;
+            else if (!(row_has_note(
+                    j_row[i], i[1:0]
+                ) && j_row[i] > 0 && row_has_note(
+                    j_row[i] - 1, i[1:0]
+                )))
+              hold_active[i] <= 0;
+          end
+        end
+      end
+
       if (frame_tick) begin
         logic do_beat;
-        logic [8:0] temp_a;
-        logic [7:0] temp_px;
         do_beat = beat_pending || beat_p;
 
         for (int i = 0; i < 4; i++) begin
-          if (press_tmr[i] != 0) press_tmr[i] <= press_tmr[i] - 1;
-          if (valid_tmr[i] != 0) valid_tmr[i] <= valid_tmr[i] - 1;
+          if (press_tmr[i] != 0 && !p_key[i]) press_tmr[i] <= press_tmr[i] - 1;
+          if (valid_tmr[i] != 0 && !p_key[i]) valid_tmr[i] <= valid_tmr[i] - 1;
         end
 
+        // 長按加分邏輯
+        if (do_beat) begin
+          for (int i = 0; i < 4; i++) begin
+            if (hold_active[i] && key_hold[i] && (beat_cnt > 0 && row_has_note(
+                    beat_cnt - 1, i[1:0]
+                ))) begin
+              rating_rg[i] <= R_GOOD;
+              valid_tmr[i] <= VALID_SHOW[7:0];
+              next_score += 17'd5;
+            end else if (hold_active[i] && !key_hold[i]) begin
+              hold_active[i] <= 0;
+            end
+          end
+        end
+
+        // 獨立且精確的 Miss 掃描：只有當音符真正「掉出」Late Hit 判定區外，才標記為 Miss
+        for (int i = 0; i < 4; i++) begin
+          if (row_has_note(
+                  beat_cnt, i[1:0]
+              ) && (last_row[i] == 12'hFFF || beat_cnt > last_row[i])) begin
+            if (c0 > WIN_HI[9:0]) begin  // c0 大於判定下緣 (代表來不及按了)
+              rating_rg[i]   <= R_MISS;
+              valid_tmr[i]   <= VALID_SHOW[7:0];
+              hold_active[i] <= 0;
+              last_row[i]    <= beat_cnt;
+            end
+          end
+        end
+
+        // 拍子與像素推進
         if (do_beat) begin
           if (frame_cnt >= 8'd4) fpb <= frame_cnt;
           frame_cnt <= '0;
           sub_acc <= '0;
           sub_acc_px <= '0;
           beat_pending <= 0;
-
-          // Miss 掃描
-          for (int i = 0; i < 4; i++) begin
-            if (row_has_note(
-                    beat_cnt, i
-                ) && (last_row[i] == 12'hFFF || beat_cnt > last_row[i])) begin
-              if (hold_active[i] && key_hold[i] && (beat_cnt > 0 && row_has_note(
-                      beat_cnt - 1, i
-                  ))) begin
-                rating_rg[i] <= R_GOOD;
-                valid_tmr[i] <= VALID_SHOW[7:0];
-                next_score += 17'd5;
-              end else begin
-                rating_rg[i]   <= R_MISS;
-                valid_tmr[i]   <= VALID_SHOW[7:0];
-                hold_active[i] <= 0;
-              end
-              last_row[i] <= beat_cnt;
-            end
-          end
           beat_cnt <= beat_cnt + 1;
           if (beat_cnt + 1 >= cur_len) song_finish <= 1;
         end else begin
+          logic [8:0] temp_a;
+          logic [7:0] temp_px;
           if (frame_cnt != 8'hFF) frame_cnt <= frame_cnt + 1;
 
-          // 修正：用二進位權重減法取代危險的 deep for-loop
           temp_a  = sub_acc + ROW_PX_9;
           temp_px = sub_acc_px;
           if (temp_a >= {1'b0, fpb} * 16) begin
@@ -274,30 +325,6 @@ module play_track_logic #(
         end
       end
 
-      // 玩家按鍵判定
-      for (int i = 0; i < 4; i++) begin
-        if (p_key[i]) begin
-          press_tmr[i] <= PRESS_FLASH[7:0];
-          if (j_hit[i]) begin
-            last_row[i]  <= j_row[i];
-            rating_rg[i] <= j_rate[i];
-            valid_tmr[i] <= VALID_SHOW[7:0];
-            next_score += {13'd0, j_score[i]};
-
-            if (row_has_note(
-                    j_row[i], i
-                ) && row_has_note(
-                    j_row[i] + 1, i
-                ) && !(j_row[i] > 0 && row_has_note(
-                    j_row[i] - 1, i
-                )))
-              hold_active[i] <= 1;
-            else if (!(row_has_note(j_row[i], i) && j_row[i] > 0 && row_has_note(j_row[i] - 1, i)))
-              hold_active[i] <= 0;
-          end
-        end
-      end
-
       // 分數安全寫入（防溢位）
       if (next_score > SCORE_MAX) score <= SCORE_MAX[15:0];
       else score <= next_score[15:0];
@@ -308,7 +335,7 @@ module play_track_logic #(
     for (int l = 0; l < 4; l++) begin
       lane_pressed[l] = key_hold[l] || (press_tmr[l] != 0);
       lane_show_text[l] = (valid_tmr[l] != 0);
-      lane_show_valid[l]    = (valid_tmr[l] != 0) && (rating_rg[l]!=R_MISS) && (rating_rg[l]!=R_NONE);
+      lane_show_valid[l] = (valid_tmr[l] != 0) && (rating_rg[l]!=R_MISS) && (rating_rg[l]!=R_NONE);
       lane_rating[l*3+:3] = rating_rg[l];
     end
   end
