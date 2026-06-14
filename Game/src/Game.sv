@@ -222,6 +222,25 @@ module Game (
       .song_finish(play_song_finish)
   );
 
+
+  // ---------------------------------------------------------------------------
+  // Finish screen
+  // ---------------------------------------------------------------------------
+  logic finish_pixel;
+  logic finish_back_to_menu;
+
+  Finish Uf (
+      .clk         (clk),
+      .rst_n       (rst_n),
+      .vga_x       (vga_x),
+      .vga_y       (vga_y),
+      .score       (play_score),
+      .db_back     (db_start),
+      .p_back      (p_start),
+      .back_to_menu(finish_back_to_menu),
+      .ui_pixel    (finish_pixel)
+  );
+
   // Debug LEDs：state。想看分數低 4 bit 可以改成 play_score[3:0]
   assign leds = {1'b0, state_out};
 
@@ -243,9 +262,9 @@ module Game (
         vga_g = play_g;
         vga_b = play_b;
       end else if (in_finish) begin
-        vga_r = 4'h0;
-        vga_g = 4'h0;
-        vga_b = 4'hF;
+        vga_r = finish_pixel ? 4'hF : 4'h0;
+        vga_g = finish_pixel ? 4'hF : 4'h0;
+        vga_b = finish_pixel ? 4'hF : 4'h0;
       end
     end
   end

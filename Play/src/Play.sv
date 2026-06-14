@@ -19,6 +19,7 @@ module Play (
     output logic        song_finish
 );
 
+  // -- 模組間通訊信號 --
   logic [11:0] beat_cnt;
   logic [ 7:0] sub_acc_px;
   logic        note_on;
@@ -26,6 +27,7 @@ module Play (
   logic [3:0] lane_pressed, lane_show_valid, lane_show_text;
   logic [11:0] lane_rating;
 
+  // 1. 遊戲核心邏輯 (MVC: Model/Controller)
   play_track_logic U_logic (
       .clk(clk),
       .rst_n(rst_n),
@@ -46,6 +48,7 @@ module Play (
       .song_finish(song_finish)
   );
 
+  // 2. 音符軌道渲染 (MVC: View)
   play_track_render U_render (
       .vga_x(vga_x),
       .vga_y(vga_y),
@@ -56,6 +59,7 @@ module Play (
       .note_lane(note_lane)
   );
 
+  // 3. 接收器與文字渲染
   logic rec_on, text_on;
   logic [3:0] lane_pressed_ui;
   assign lane_pressed_ui = lane_pressed | key_hold;
@@ -71,10 +75,11 @@ module Play (
       .text_on(text_on)
   );
 
+  // 4. 背景軌道線與顏色合成
   localparam logic [11:0] C_BLACK = 12'h000, C_WHITE = 12'hFFF, C_GRAY = 12'h777;
   localparam logic [11:0] C_NOTE0 = 12'hF44, C_NOTE1 = 12'h4F6, C_NOTE2 = 12'h4AF, C_NOTE3 = 12'hFD2;
 
-  // Track Line 
+
   logic on_line_w, on_line_g;
   always_comb begin
     on_line_w = (vga_y >= 10'd1 && vga_y <= 10'd359) && (vga_x == 10'd130 || vga_x == 10'd510);

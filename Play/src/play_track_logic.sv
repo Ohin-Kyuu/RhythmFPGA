@@ -20,6 +20,7 @@ module play_track_logic #(
     input logic [3:0] p_key,
     input logic [3:0] key_hold,
 
+    // 輸出給 Render 與 UI
     output logic [11:0] beat_cnt,
     output logic [ 7:0] sub_acc_px,
     output logic [ 3:0] lane_pressed,
@@ -34,12 +35,8 @@ module play_track_logic #(
   localparam int WIN_LO = PERFECT_TOP - 16;
   localparam int WIN_HI = PERFECT_BOT + 16;
 
-  localparam logic [9:0] ROW_PX_10 = ROW_PX;
-  localparam logic [8:0] ROW_PX_9 = ROW_PX;
-  localparam logic [7:0] ROW_PX_8 = ROW_PX;
-
+  // ROM 讀取邏輯
   localparam int NMAX = 2200;
-  localparam logic [16:0] SCORE_MAX = 17'd9999;
   logic [3:0] rom_mario[0:NMAX-1], rom_zelda[0:NMAX-1], rom_pokemon[0:NMAX-1];
   initial begin
     $readmemh("mario_key_track.mem", rom_mario);
@@ -95,7 +92,7 @@ module play_track_logic #(
 
   logic [9:0] c0, c1;
   assign c0 = RECEPTOR_C[9:0] + {2'd0, sub_acc_px};
-  assign c1 = (RECEPTOR_C[9:0] + {2'd0, sub_acc_px}) - ROW_PX_10;
+  assign c1 = (RECEPTOR_C[9:0] + {2'd0, sub_acc_px}) - ROW_PX[9:0];
 
   function automatic logic [2:0] rate_of(input logic [9:0] c);
     int d;
@@ -147,6 +144,7 @@ module play_track_logic #(
     for (int l = 0; l < 4; l++) begin
       logic v0, v1;
       logic [2:0] rt0, rt1;
+      // 修正：last_row == 12'hFFF 代表該軌還沒擊中過任何音符
       v0  = mask0[l] && (beat_cnt < cur_len) && (last_row[l] == 12'hFFF || beat_cnt > last_row[l]) && in_win(
           c0);
       v1  = mask1[l] && (beat_cnt+12'd1 < cur_len) && (last_row[l] == 12'hFFF || beat_cnt+12'd1 > last_row[l]) && in_win(
@@ -195,14 +193,14 @@ module play_track_logic #(
       score        <= '0;
       song_finish  <= 0;
       for (int i = 0; i < 4; i++) begin
-        last_row[i]    <= 12'hFFF;
+        last_row[i]    <= 12'hFFF; // 修正死鎖：初始化為 FFF (-1)
         press_tmr[i]   <= '0;
         valid_tmr[i]   <= '0;
         rating_rg[i]   <= R_NONE;
         hold_active[i] <= 0;
       end
     end else if (play_en && !song_finish) begin
-      logic [16:0] next_score;
+      logic [16:0] next_score;  // 17-bit for score saturation to 9999
       next_score = {1'b0, score};
 
       if (beat_p) beat_pending <= 1'b1;
@@ -248,7 +246,8 @@ module play_track_logic #(
         end else begin
           if (frame_cnt != 8'hFF) frame_cnt <= frame_cnt + 1;
 
-          temp_a  = sub_acc + ROW_PX_9;
+          // 修正：用二進位權重減法取代危險的 deep for-loop
+          temp_a  = sub_acc + ROW_PX[8:0];
           temp_px = sub_acc_px;
           if (temp_a >= {1'b0, fpb} * 16) begin
             temp_a -= {1'b0, fpb} * 16;
@@ -271,7 +270,7 @@ module play_track_logic #(
             temp_px += 1;
           end
 
-          if (temp_px > ROW_PX_8 - 1) temp_px = ROW_PX_8 - 1;
+          if (temp_px > ROW_PX[7:0] - 1) temp_px = ROW_PX[7:0] - 1;
           sub_acc <= temp_a;
           sub_acc_px <= temp_px;
 
@@ -279,6 +278,7 @@ module play_track_logic #(
         end
       end
 
+      // 玩家按鍵判定
       for (int i = 0; i < 4; i++) begin
         if (p_key[i]) begin
           press_tmr[i] <= PRESS_FLASH[7:0];
@@ -302,7 +302,8 @@ module play_track_logic #(
         end
       end
 
-      if (next_score > SCORE_MAX) score <= SCORE_MAX[15:0];
+      // Score saturates at 9999 for 4-digit Final UI
+      if (next_score > 17'd9999) score <= 16'd9999;
       else score <= next_score[15:0];
     end
   end
